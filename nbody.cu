@@ -18,13 +18,35 @@ typedef struct { float x, y, z, vx, vy, vz; } Body;
  * on all others.
  */
 
-__global__
-void calculateForce(int i, Body* p, float *Fx, float *Fy, float *Fz, int n) {
-  int index = threadIdx.x + blockIdx.x * blockDim.x;
-  int stride = blockDim.x * gridDim.x;
 
-  for (int i = index; i < N; i+=stride) {
-  //for (int j = 0; j < n; j++) {
+
+__global__
+void bodyForce(Body *p, float dt, int n) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < n) {
+        float Fx = 0.0f; float Fy = 0.0f; float Fz = 0.0f;
+
+        for (int j = 0; j < n; j++) {
+            float dx = p[j].x - p[i].x;
+            float dy = p[j].y - p[i].y;
+            float dz = p[j].z - p[i].z;
+            float distSqr = dx*dx + dy*dy + dz*dz + SOFTENING;
+            float invDist = rsqrtf(distSqr);
+            float invDist3 = invDist * invDist * invDist;
+
+            Fx += dx * invDist3; Fy += dy * invDist3; Fz += dz * invDist3;
+        }
+
+        p[i].vx += dt * Fx; p[i].vy += dt * Fy; p[i].vz += dt * Fz;
+    }
+}
+
+/**
+void bodyForce(Body *p, float dt, int n) {
+  for (int i = 0; i < n; i++) {
+    float Fx = 0.0f; float Fy = 0.0f; float Fz = 0.0f;    
+
+    for (int j = 0; j < n; j++) {
       float dx = p[j].x - p[i].x;
       float dy = p[j].y - p[i].y;
       float dz = p[j].z - p[i].z;
@@ -32,26 +54,12 @@ void calculateForce(int i, Body* p, float *Fx, float *Fy, float *Fz, int n) {
       float invDist = rsqrtf(distSqr);
       float invDist3 = invDist * invDist * invDist;
 
-      *Fx += dx * invDist3;
-      *Fy += dy * invDist3;
-      *Fz += dz * invDist3;
+      Fx += dx * invDist3; Fy += dy * invDist3; Fz += dz * invDist3;
+    } 
+
+    p[i].vx += dt*Fx; p[i].vy += dt*Fy; p[i].vz += dt*Fz;
   }
-
-}
-
-//__global__
-void bodyForce(Body *p, float dt, int n) {
-
-  for (int i = 0; i < n; ++i) {
-    float Fx = 0.0f; float Fy = 0.0f; float Fz = 0.0f;
-    
-    calculateForce(i, p, &Fx, &Fy, &Fz, n);
-
-    p[i].vx += dt*Fx; 
-    p[i].vy += dt*Fy; 
-    p[i].vz += dt*Fz;
-  }
-}
+}**/
 
 
 
@@ -113,7 +121,8 @@ int main(const int argc, const char** argv) {
   int bytes = nBodies * sizeof(Body);
   float *buf;
 
-  buf = (float *)malloc(bytes);
+  cudaMallocManaged(&buf, bytes);
+//  buf = (float *)malloc(bytes);
 
   Body *p = (Body*)buf;
   size_t size = nBodies * sizeof(Body);
@@ -137,9 +146,12 @@ int main(const int argc, const char** argv) {
    * and potentially the work to integrate the positions.
    */
 
-    bodyForce(p, dt, nBodies); // compute interbody forces
-//    bodyForce<<<numberOfBlocks, threadsPerBlock>>>(p, dt, nBodies); // compute interbody forces
-//    cudaDeviceSynchronize();
+//    bodyForce(p, dt, nBodies); // compute interbody forces
+
+    //cudaMemPrefetchAsync(p, size, deviceId);
+    cudaDeviceSynchronize();
+    bodyForce<<<1, 1>>>(p, dt, nBodies); // compute interbody forces
+    cudaDeviceSynchronize();
 
   /*
    * This position integration cannot occur until this round of `bodyForce` has completed.
@@ -164,5 +176,6 @@ int main(const int argc, const char** argv) {
   // unrealistically high values.
   printf("%0.3f Billion Interactions / second\n", billionsOfOpsPerSecond);
 
-  free(buf);
+  cudaFree(p);
+  cudaFree(buf);
 }
