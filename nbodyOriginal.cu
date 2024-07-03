@@ -18,13 +18,11 @@ typedef struct { float x, y, z, vx, vy, vz; } Body;
  * on all others.
  */
 
-__global__
-void calculateForce(int i, Body* p, float *Fx, float *Fy, float *Fz, int n) {
-  int index = threadIdx.x + blockIdx.x * blockDim.x;
-  int stride = blockDim.x * gridDim.x;
+void bodyForce(Body *p, float dt, int n) {
+  for (int i = 0; i < n; ++i) {
+    float Fx = 0.0f; float Fy = 0.0f; float Fz = 0.0f;
 
-  for (int i = index; i < N; i+=stride) {
-  //for (int j = 0; j < n; j++) {
+    for (int j = 0; j < n; j++) {
       float dx = p[j].x - p[i].x;
       float dy = p[j].y - p[i].y;
       float dz = p[j].z - p[i].z;
@@ -32,59 +30,15 @@ void calculateForce(int i, Body* p, float *Fx, float *Fy, float *Fz, int n) {
       float invDist = rsqrtf(distSqr);
       float invDist3 = invDist * invDist * invDist;
 
-      *Fx += dx * invDist3;
-      *Fy += dy * invDist3;
-      *Fz += dz * invDist3;
-  }
-
-}
-
-//__global__
-void bodyForce(Body *p, float dt, int n) {
-
-  for (int i = 0; i < n; ++i) {
-    float Fx = 0.0f; float Fy = 0.0f; float Fz = 0.0f;
-    
-    calculateForce(i, p, &Fx, &Fy, &Fz, n);
-
-    p[i].vx += dt*Fx; 
-    p[i].vy += dt*Fy; 
-    p[i].vz += dt*Fz;
-  }
-}
-
-
-
-__global__ void integratePosition(Body *p, int nBodies, float dt) {
-
-    int index = threadIdx.x + blockIdx.x * blockDim.x;
-    int stride = blockDim.x * gridDim.x;
-
-    for (int i = index ; i < nBodies; i+=stride) { 
-      // integrate position
-      p[i].x += p[i].vx*dt;
-      p[i].y += p[i].vy*dt;
-      p[i].z += p[i].vz*dt;
+      Fx += dx * invDist3; Fy += dy * invDist3; Fz += dz * invDist3;
     }
+
+    p[i].vx += dt*Fx; p[i].vy += dt*Fy; p[i].vz += dt*Fz;
+  }
 }
 
 
 int main(const int argc, const char** argv) {
-
-  int deviceId;
-  int numberOfSMs;
-
-  cudaGetDevice(&deviceId);
-  cudaDeviceGetAttribute(&numberOfSMs, cudaDevAttrMultiProcessorCount, deviceId);
-  
-  cudaStream_t stream1;
-  cudaStreamCreate(&stream1);
-  
-  size_t threadsPerBlock;
-  size_t numberOfBlocks;
-
-  threadsPerBlock = 256;
-  numberOfBlocks = 32 * numberOfSMs;
 
   // The assessment will test against both 2<11 and 2<15.
   // Feel free to pass the command line argument 15 when you generate ./nbody report files
@@ -116,9 +70,6 @@ int main(const int argc, const char** argv) {
   buf = (float *)malloc(bytes);
 
   Body *p = (Body*)buf;
-  size_t size = nBodies * sizeof(Body);
-  
-  cudaMallocManaged(&p, size);
 
   read_values_from_file(initialized_values, buf, bytes);
 
@@ -138,18 +89,17 @@ int main(const int argc, const char** argv) {
    */
 
     bodyForce(p, dt, nBodies); // compute interbody forces
-//    bodyForce<<<numberOfBlocks, threadsPerBlock>>>(p, dt, nBodies); // compute interbody forces
-//    cudaDeviceSynchronize();
 
   /*
    * This position integration cannot occur until this round of `bodyForce` has completed.
    * Also, the next round of `bodyForce` cannot begin until the integration is complete.
    */
 
-    cudaMemPrefetchAsync(p, size, deviceId);
-
-    integratePosition<<<numberOfBlocks, threadsPerBlock, 0, stream1>>>(p, nBodies, dt);
-    cudaDeviceSynchronize();
+    for (int i = 0 ; i < nBodies; i++) { // integrate position
+      p[i].x += p[i].vx*dt;
+      p[i].y += p[i].vy*dt;
+      p[i].z += p[i].vz*dt;
+    }
 
     const double tElapsed = GetTimer() / 1000.0;
     totalTime += tElapsed;
