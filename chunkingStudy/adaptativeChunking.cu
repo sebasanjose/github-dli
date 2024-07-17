@@ -9,6 +9,13 @@ __global__ void vectorAddKernel(int *a, int *b, int *c, int chunkSize, int offse
     }
 }
 
+void addVectors(int *a, int *b, int *c, int size){
+    for (int i=0; i<size; i++) {
+        c[i] = a[i] + b[i];
+    }
+}
+
+
 void adaptiveChunking(int *h_a, int *h_b, int *h_c, int size) {
     int minChunkSize = 256; // Minimum chunk size
     int maxChunkSize = 1024; // Maximum chunk size
@@ -77,7 +84,8 @@ int main() {
         h_b[i] = size - i;
     }
 
-    adaptiveChunking(h_a, h_b, h_c, size);
+    //adaptiveChunking(h_a, h_b, h_c, size);
+    addVectors(h_a, h_b, h_c, size);
 
     // Verify results
     bool correct = true;
