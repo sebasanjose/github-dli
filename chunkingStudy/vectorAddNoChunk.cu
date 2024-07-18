@@ -16,6 +16,7 @@ __global__ void addVectorsGPU(const int* A, const int* B, int* C, int N) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i < N) {
         C[i] = A[i] + B[i];
+        //std::cout << "adding " << A[i] << " + " << B[i] << " = " << C[i] << std::endl;
     }
 }
 
@@ -52,7 +53,8 @@ void addVectorsOnGPU(const std::vector<int>& A, const std::vector<int>& B, std::
 
 int main() {
     // Set the size of the vectors
-    int N = 1 << 20; // 1 million elements
+    //int N = 1 << 20; // 1 million elements
+    int N = 5;
 
     // Initialize the vectors
     std::vector<int> A(N), B(N), C_CPU(N), C_GPU(N);
