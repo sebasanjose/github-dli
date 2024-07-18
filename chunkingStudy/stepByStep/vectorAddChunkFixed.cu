@@ -35,6 +35,10 @@ void GPU_sum(const float* A, const float* B, float* C, int n_el) {
   blocksPerGrid   = ceil(double(n_el)/double(threadsPerBlock));
 
   // invoke the kernel
+  int numChunks = 24;
+  for (int i = 0; i < numChunks; i++) {
+    
+  }
   kernel_sum<<<blocksPerGrid,threadsPerBlock>>>(A, B, C, n_el);
 }
 
